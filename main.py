@@ -1,6 +1,7 @@
-import asyncio
 from enum import Enum
-from bleak import BleakClient, BleakScanner
+import sys
+import time
+import simplepyble
 
 address = None
 
@@ -91,44 +92,86 @@ class Channels:
 
 
 class XpModule:
-    def __init__(self, client, device, write_charact):
-        self.client = client
-        self.device = device
-        self.write_charact = write_charact
+    def __init__(self, peripheral, wserv, wchar):
+        self.peripheral = peripheral
+        self.wserv = wserv
+        self.wchar = wchar
         self.channels = Channels()
 
-async def handle_device(client, write_charact):
-    channels = Channels()
+    def write_channels(self):
+        cmd_bytes = self.channels.to_cmd_bytes()
+        cmd_bytes = bytes([byte for byte in cmd])
+        self.peripheral.write_request(self.wserv.uuid(), self.wchar.uuid(), cmd_bytes)
 
-    power = 0
-    while(True):
-        power += 50
-        if power >= 256:
-            power = 10
+def run_loop(xp_module: XpModule):
+    while True:
+        xp_module.channels.set_power(ChanId.CHAN_A, 0xFF)
+        xp_module.channels.set_power(ChanId.CHAN_B, 0xFF)
+        xp_module.write_channels()
+        time.sleep(0.3)
 
-        channels.set_power(ChanId.CHAN_A, power)
-        channels.set_power(ChanId.CHAN_B, power)
-        cmd = channels.to_cmd_bytes()
-        resp = await client.write_gatt_char(write_charact, cmd, True)
-        await asyncio.sleep(0.01)
+if __name__ == "__main__":
+    adapters = simplepyble.Adapter.get_adapters()
 
-async def init_dev(device):
-    async with BleakClient(device) as client:
-        for service in client.services:
-            if service.uuid == SERVICE_UUID:
-                for charact in service.characteristics:
-                    if charact.uuid == WRITE_UUID:
-                        await handle_device(client, charact)
+    if len(adapters) == 0:
+        print("No adapters found")
+    adapter = adapters[0]
 
+    print(f"Selected adapter: {adapter.identifier()} [{adapter.address()}]")
 
-async def main():
-    devices = await BleakScanner.discover()
-    for d in devices:
-        if d.name != None and d.name.startswith("JG_JMC"):
-            print("Found xp device " + str(d))
-            await init_dev(d)
-            return
+    adapter.set_callback_on_scan_start(lambda: print("Scan started."))
+    adapter.set_callback_on_scan_stop(lambda: print("Scan complete."))
+    adapter.set_callback_on_scan_found(lambda peripheral: print(f"Found {peripheral.identifier()} [{peripheral.address()}]"))
 
-    print("No XP blocks module available")
+    # Scan for 5 seconds
+    adapter.scan_for(5000)
+    peripherals = adapter.scan_get_results()
 
-asyncio.run(main())
+    xp_dev = None
+    for i, peripheral in enumerate(peripherals):
+        print(f"{i}: {peripheral.identifier()} [{peripheral.address()}]")
+
+    for i, peripheral in enumerate(peripherals):
+        name = peripheral.identifier()
+        if name != None and name.startswith("JG_JMC"):
+            print("Found XP Block device")
+            xp_dev = peripheral
+
+    if xp_dev == None:
+        print("Failed to find XP block device")
+        sys.exit(-1)
+
+    print(f"Connecting to: {xp_dev.identifier()} [{xp_dev.address()}]")
+    xp_dev.connect()
+
+    services = xp_dev.services()
+    wserv = None
+    for service in services:
+        if service.uuid() == SERVICE_UUID:
+            wserv = service
+            break
+    
+    if wserv == None:
+        print("Failed to find XP block BLE service")
+        sys.exit(-1)
+
+    wchar = None
+    for characteristic in wserv.characteristics():
+            if characteristic.uuid() == WRITE_UUID:
+                wchar = characteristic
+                break
+    
+    if wchar == None:
+        print("Failed to find XP block BLE write characteristic")
+        sys.exit(-1)
+ 
+    try:
+        xp_module = XpModule(peripheral, wserv, wchar)  
+        run_loop(xp_module)
+    except KeyboardInterrupt:
+        clear_channels = Channels()
+        cmd = clear_channels.to_cmd_bytes()
+        self.peripheral.write_request(self.wserv.uuid(), self.wchar.uuid(), cmd_bytes)
+        peripheral.disconnect()
+        sys.exit(0)
+
