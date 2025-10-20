@@ -1,0 +1,61 @@
+map:
+  channel0:
+    type: spray
+    name: Door spray
+    id: door_spray
+  channel1:
+    type: motor
+    name: Spooker motor
+    id: spooker_motor
+  channel2:
+    type: light
+    name: Top window Light
+    id: top_window_light
+  channel3:
+    type: light
+    name: Window Light
+    id: window_light_1
+  channel4:
+    type: light
+    name: Window Light
+    id: window_light_2
+  channel5:
+    type: light
+    name: Window Light
+    id: window_light_3
+
+scenario:
+  name: Halloween Show
+  steps:
+    - step:
+      name: Halloween Entrance
+      actions:
+        - action: fade
+          name: Fade Top Light
+          duration: 10
+          speed: 10
+          channels:
+            - top_window_light
+
+    - step:
+        name: Halloween Entrance
+        actions:
+          - action: fade
+            duration: 10
+            individual: false
+            speed: 10
+            sync: sequential
+            channels:
+              - top_window_light
+              - window_light_1
+              - window_light_2
+              - window_light_3
+              - window_light_4
+
+    - step:
+        name: Spooky Spray
+        actions:
+          - action: spray
+            duration: 4
+            channels:
+              - door_spray
