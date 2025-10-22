@@ -1,61 +1,55 @@
 map:
-  channel0:
+  window_spray:
     type: spray
-    name: Door spray
-    id: door_spray
-  channel1:
-    type: motor
-    name: Spooker motor
-    id: spooker_motor
-  channel2:
+    name: Window spray
+    invert: true
+    id: 0
+  pumpkin_light:
     type: light
-    name: Top window Light
-    id: top_window_light
-  channel3:
+    name: Pumpkin light
+    id: 4
+  window_ghost:
     type: light
-    name: Window Light
-    id: window_light_1
-  channel4:
+    name: Window Ghost
+    id: 5
+  entrance_light:
     type: light
-    name: Window Light
-    id: window_light_2
-  channel5:
-    type: light
-    name: Window Light
-    id: window_light_3
+    name: Entrance Light
+    id: 6
+
+presets:
+  - glow_fast: &glow_fast
+      type: fade
+  - candle_flicker: &candle_flicker
+      type: candle_flicker
+      flicker_duration: 5
+  - lightning: &lightning
+      type: lightning
+      speed: 10
+  - full_power: &full_power
+      type: set
+      channel: 255
 
 scenario:
-  name: Halloween Show
+  name: Small tower
   steps:
     - step:
-      name: Halloween Entrance
-      actions:
-        - action: fade
-          name: Fade Top Light
-          duration: 10
-          speed: 10
-          channels:
-            - top_window_light
-
+        duration: 10
+        channels:
+          - pumpkin_light:
+            <<: *candle_flicker
+          - window_ghost:
+            <<: *glow_fast
+          - entrance_light:
+            <<: *glow_fast
     - step:
-        name: Halloween Entrance
-        actions:
-          - action: fade
-            duration: 10
-            individual: false
-            speed: 10
-            sync: sequential
-            channels:
-              - top_window_light
-              - window_light_1
-              - window_light_2
-              - window_light_3
-              - window_light_4
-
-    - step:
-        name: Spooky Spray
-        actions:
-          - action: spray
-            duration: 4
-            channels:
-              - door_spray
+        duration: 5
+        channels:
+          - pumpkin_light:
+            <<: *candle_flicker
+          - window_spray:
+            <<: *full_power
+          - entrance_light:
+            <<: *full_power
+          - window_ghost:
+            <<: *full_power
