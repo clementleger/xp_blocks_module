@@ -31,18 +31,26 @@ class Channel:
     def __init__(self, id: ChanId, chan_cmd_bit: int):
         self.power = 0
         self.id = id
+        self.inverted = False
         self.chan_cmd_bit = chan_cmd_bit
         self.direction = Direction.FORWARD
+
+    def set_inverted(self, inverted: bool):
+        self.inverted = inverted
+        self.set_direction(self.direction)
 
     def set_power(self, power: int):
         power = clamp(power, 0, MAX_POWER)
         self.power = power
 
     def set_direction(self, direction: Direction):
-        self.direction = direction
+        if self.inverted:
+            self.direction = Direction.FORWARD if direction == Direction.BACKWARD else Direction.BACKWARD
+        else:
+            self.direction = direction
 
     def __str__(self):
-        return self.id.value + ": " + self.power
+        return self.id.name + ": " + str(self.power)
 
     def __repr__(self):
         return self.id.name + ": " + str(self.power)
@@ -51,6 +59,9 @@ class Channels:
     def __init__(self):
         self.channels = list(map(lambda v: Channel(v[0], v[1]), [(ChanId.CHAN_A, 0x1), (ChanId.CHAN_B, 0x4), (
             ChanId.CHAN_C, 0x1), (ChanId.CHAN_D, 0x4), (ChanId.CHAN_E, 0x1), (ChanId.CHAN_F, 0x4)]))
+
+    def set_inverted(self, chan_id: ChanId, inverted: bool):
+        self.channels[chan_id.value].set_inverted(inverted)
 
     def set_power(self, chan_id: ChanId, power: int):
         self.channels[chan_id.value].set_power(power)
@@ -68,7 +79,7 @@ class Channels:
         if (self.channels[id].power):
             chan = chan | (self.channels[id].chan_cmd_bit << self.channels[id].direction.value)
         if (self.channels[id + 1].power):
-            chan = chan | (self.channels[id + 1].chan_cmd_bit << self.channels[id].direction.value)
+            chan = chan | (self.channels[id + 1].chan_cmd_bit << self.channels[id + 1].direction.value)
 
         return chan
 
@@ -101,12 +112,24 @@ class XpModule:
         self.wserv = wserv
         self.wchar = wchar
         self.channels = Channels()
+    
+    def set_inverted(self, chan_id: ChanId, inverted: bool):
+        self.channels.set_inverted(chan_id, inverted)
+
+    def set_power(self, chan_id: ChanId, power: int):
+        self.channels.set_power(chan_id, power)
+
+    def set_direction(self, chan_id: ChanId, direction: Direction):
+        self.channels.set_direction(chan_id, direction)
 
     def write_channels(self):
         cmd_bytes = self.channels.to_cmd_bytes()
         cmd_bytes = bytes([byte for byte in cmd_bytes])
         self.peripheral.write_request(self.wserv.uuid(), self.wchar.uuid(), cmd_bytes)
 
-    def reset(self):
+    def clear(self):
         self.channels.clear()
+
+    def reset(self):
+        self.clear()
         self.write_channels()

@@ -2,20 +2,20 @@ map:
   window_spray:
     type: spray
     name: Window spray
-    invert: true
+    inverted: true
     id: 0
   pumpkin_light:
     type: light
     name: Pumpkin light
-    id: 4
+    id: 3
   window_ghost:
     type: light
     name: Window Ghost
-    id: 5
+    id: 4
   entrance_light:
     type: light
     name: Entrance Light
-    id: 6
+    id: 5
 
 presets:
   - glow_fast: &glow_fast
@@ -26,30 +26,24 @@ presets:
   - lightning: &lightning
       type: lightning
       speed: 10
-  - full_power: &full_power
-      type: set
-      channel: 255
+  - static: &static
+      type: static
+      power: 255
 
 scenario:
   name: Small tower
   steps:
-    - step:
-        duration: 10
-        channels:
-          - pumpkin_light:
-            <<: *candle_flicker
-          - window_ghost:
-            <<: *glow_fast
-          - entrance_light:
-            <<: *glow_fast
-    - step:
-        duration: 5
-        channels:
-          - pumpkin_light:
-            <<: *candle_flicker
-          - window_spray:
-            <<: *full_power
-          - entrance_light:
-            <<: *full_power
-          - window_ghost:
-            <<: *full_power
+    - duration: 2
+      channels:
+        - window_spray:
+            <<: *static
+    - duration: 3
+      channels:
+        - pumpkin_light:
+            <<: *static 
+    - duration: 2
+      channels:
+        - entrance_light:
+            <<: *static
+        - window_ghost:
+            <<: *static

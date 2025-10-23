@@ -1,42 +1,92 @@
-from xp_module import XpModule, ChanId
+import traceback
+from xp_module import Direction, XpModule, ChanId, Channel
 import argparse
 import sys
 import simplepyble
 import yaml
-
-address = None
+import time
 
 NOTIFY_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
 SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb"
 WRITE_UUID = "0000fff2-0000-1000-8000-00805f9b34fb"
 
+def get_millis():
+    return time.time_ns() / 1_000_000
+
+class ChanAction:
+    def __init__(self, xp_module: XpModule, chan_id: ChanId, cfg):
+        self.chan_id = chan_id
+        self.cfg = cfg
+        self.xp_module = xp_module
+
+    def update(self):
+        pass
+
+
+class Static(ChanAction):
+    def __init__(self, xp_module: XpModule, chan_id: ChanId, cfg):
+        super().__init__(xp_module, chan_id, cfg)
+        self.xp_module.set_power(self.chan_id, cfg["power"])
+        if cfg.get("direction") != None:
+            self.xp_module.set_direction(self.chan_id, Direction(cfg["direction"]))
+
+class Fader(ChanAction):
+    def update(self):
+        pass
+    
+class Blinker(ChanAction):
+    def update(self):
+        pass
+    
 class Scenario:
-    def __init__(self, file: str):
+    def __init__(self, xp_module: XpModule, file: str):
         with open(file, "r") as file:
             self.config = yaml.safe_load(file)
+        
+        for chan in self.config["map"].values():
+            chan_id = ChanId(chan["id"])
+            if chan.get("inverted") != None:
+                xp_module.set_inverted(chan_id, chan["inverted"])
     
-    def get_channel_for_name(self, name: str) -> ChanId:
+    def get_chan_id_for_name(self, name: str) -> ChanId:
         chan = self.config["map"][name]["id"]
         return ChanId(chan)
 
-def execute_scenario(xp_module: XpModule, scenario: Scenario):
-    for step in scenario.config["scenario"]["steps"]:
-        duration = step["duration"]
-        print(f"Executing step for {duration} seconds")
-        for chan_cfg in step["channels"]:
+class Step:
+    def __init__(self, cfg, scenario: Scenario, xp_module: XpModule):
+        self.cfg = cfg
+        self.xp_module = xp_module
+        self.xp_module.clear()
+        self.actions = []
+        self.duration = cfg["duration"] * 1000  # Convert to milliseconds
+        for chan_cfg in self.cfg["channels"]:
             for name, cfg in chan_cfg.items():
-                chan_id = scenario.get_channel_for_name(name)
-                power = cfg.get("channel", 0)
-                print(f" - Setting channel {name} (id={chan_id}) to power {power}")
-                xp_module.channels.set_power(chan_id, power)
-        xp_module.write_channels()
-        xp_module.wait(duration)
+                chan_id = scenario.get_chan_id_for_name(name)
+                match cfg["type"]:
+                    case "fader":
+                        self.actions.append(Fader(xp_module, chan_id, cfg))
+                    case "static":
+                        self.actions.append(Static(xp_module, chan_id, cfg))
 
-def run_loop(xp_module: XpModule):
-    while True:
-        xp_module.channels.set_power(ChanId.CHAN_A, 255)
-        xp_module.channels.set_power(ChanId.CHAN_B, 255)
-        xp_module.write_channels()
+    def execute(self):
+        start_time = get_millis()
+        last_refresh = 0
+        print(f"Executing step for duration {self.duration} ms")
+        while (get_millis() < start_time + self.duration):
+            if (get_millis() - last_refresh) < args.refresh_rate:
+                continue
+
+            last_refresh = get_millis()
+            for action in self.actions:
+                action.update()
+
+            self.xp_module.write_channels()
+
+def run_scenario(xp_module: XpModule, args):
+    scenario = Scenario(xp_module, args.scenario_file)
+    print("Executing scenario ", scenario.config["scenario"]["name"])
+    for step in scenario.config["scenario"]["steps"]:
+        Step(step, scenario, xp_module).execute()
 
 def list_adapters():
     adapters = simplepyble.Adapter.get_adapters()
@@ -48,6 +98,42 @@ def list_adapters():
     
     return adapters
 
+def connect_device(xp_dev, args):
+    print(f"Connecting to: {xp_dev.identifier()} [{xp_dev.address()}]")
+    xp_dev.connect()
+
+    services = xp_dev.services()
+    wserv = None
+    for service in services:
+        if service.uuid() == SERVICE_UUID:
+            wserv = service
+            break
+    
+    if wserv == None:
+        print("Failed to find XP block BLE service")
+        sys.exit(-1)
+
+    wchar = None
+    for characteristic in wserv.characteristics():
+            if characteristic.uuid() == WRITE_UUID:
+                wchar = characteristic
+                break
+    
+    if wchar == None:
+        print("Failed to find XP block BLE write characteristic")
+        sys.exit(-1)
+ 
+    xp_module = XpModule(xp_dev, wserv, wchar) 
+    try: 
+        run_scenario(xp_module, args)
+    except Exception as e:
+        traceback.print_exc()
+        print("Exiting...")
+
+    xp_module.reset()
+    xp_dev.disconnect()
+
+
 if __name__ == "__main__":
 
     # Instantiate the parser
@@ -58,6 +144,7 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--list-adapters', action='store_true', help='List available BLE adapters and exit')
     parser.add_argument('-L', '--list-devices', action='store_true', help='List available BLE devices and exit')
     parser.add_argument('-f', '--scenario-file', type=str, help='File path to scenario YAML file to execute')
+    parser.add_argument('-r', '--refresh-rate', type=int, help='Refresh rate in milliseconds', default=50)
 
     args = parser.parse_args()
 
@@ -85,6 +172,10 @@ if __name__ == "__main__":
     if args.list_devices:
         sys.exit(0)
 
+    if not args.scenario_file:
+        print("Please specify a scenario file to execute")
+        sys.exit(-1)
+
     if not args.name and not args.address:
         print("Please specify either a device name or address to connect to")
         sys.exit(-1)
@@ -106,36 +197,6 @@ if __name__ == "__main__":
         print("Invalid XP block device")
         sys.exit(-1)
 
-    print(f"Connecting to: {xp_dev.identifier()} [{xp_dev.address()}]")
-    xp_dev.connect()
+    connect_device(xp_dev, args)
 
-    services = xp_dev.services()
-    wserv = None
-    for service in services:
-        if service.uuid() == SERVICE_UUID:
-            wserv = service
-            break
-    
-    if wserv == None:
-        print("Failed to find XP block BLE service")
-        sys.exit(-1)
-
-    wchar = None
-    for characteristic in wserv.characteristics():
-            if characteristic.uuid() == WRITE_UUID:
-                wchar = characteristic
-                break
-    
-    if wchar == None:
-        print("Failed to find XP block BLE write characteristic")
-        sys.exit(-1)
- 
-    xp_module = XpModule(xp_dev, wserv, wchar) 
-    try: 
-        run_loop(xp_module)
-    except:
-        xp_module.reset()
-        print("Exiting...")
-        xp_dev.disconnect()
-        sys.exit(0)
-
+    sys.exit(0)
