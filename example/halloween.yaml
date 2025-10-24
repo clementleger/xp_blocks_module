@@ -29,21 +29,57 @@ presets:
   - static: &static
       type: static
       power: 255
+  - flicker_pumpkin: &flicker_pumpkin
+      type: flicker
+      flicker_period: 100
+      # off_threshold: 20
+  - flicker: &flicker
+      type: flicker
+      flicker_period: 200
+  - blink: &blink
+      type: flicker
+      on_off: true
+      flicker_period: 20
 
 scenario:
   name: Small tower
   steps:
     - duration: 2
+      name: Spray
       channels:
         - window_spray:
             <<: *static
-    - duration: 3
+        - pumpkin_light:
+            <<: *flicker_pumpkin 
+    - duration: 5
+      name: Candle flicker
       channels:
         - pumpkin_light:
-            <<: *static 
+            <<: *flicker_pumpkin
     - duration: 2
+      name: Lightning strike
+      channels:
+        - entrance_light:
+            <<: *blink
+        - pumpkin_light:
+            <<: *flicker_pumpkin 
+    - duration: 2
+      name: Lightning strike + spray
+      channels:
+        - window_spray:
+            <<: *static
+        - entrance_light:
+            <<: *blink
+        - pumpkin_light:
+            <<: *flicker_pumpkin 
+    - duration: 7
+      name: Normal night
       channels:
         - entrance_light:
             <<: *static
         - window_ghost:
-            <<: *static
+            <<: *flicker
+        - pumpkin_light:
+            <<: *flicker_pumpkin
+
+      

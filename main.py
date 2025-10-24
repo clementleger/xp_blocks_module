@@ -1,3 +1,5 @@
+from enum import Enum
+import random
 import traceback
 from xp_module import Direction, XpModule, ChanId, Channel
 import argparse
@@ -22,7 +24,6 @@ class ChanAction:
     def update(self):
         pass
 
-
 class Static(ChanAction):
     def __init__(self, xp_module: XpModule, chan_id: ChanId, cfg):
         super().__init__(xp_module, chan_id, cfg)
@@ -30,14 +31,34 @@ class Static(ChanAction):
         if cfg.get("direction") != None:
             self.xp_module.set_direction(self.chan_id, Direction(cfg["direction"]))
 
-class Fader(ChanAction):
+class Flicker(ChanAction):
+    def __init__(self, xp_module: XpModule, chan_id: ChanId, cfg):
+        super().__init__(xp_module, chan_id, cfg)
+        self.prng = random.randrange(0, 255)
+        self.last_update = 0
+        self.flicker_period = cfg.get("flicker_period", 100)
+        self.on_off = cfg.get("on_off", False)
+        self.off_threshold = cfg.get("off_threshold", 0)
+
     def update(self):
-        pass
-    
-class Blinker(ChanAction):
-    def update(self):
-        pass
-    
+        if get_millis() - self.last_update < self.flicker_period:
+            return
+
+        self.last_update = get_millis()
+        self.prng = (self.prng >> 1) ^ (-(self.prng & 1) & 0xB8)
+        self.prng &= 0xFF
+
+        if self.on_off:
+            if self.prng > 128:
+                self.xp_module.set_power(self.chan_id, 255)
+            else:
+                self.xp_module.set_power(self.chan_id, 0)
+        else:
+            value = self.prng
+            if value < self.off_threshold:
+                value = 0
+            self.xp_module.set_power(self.chan_id, value)
+
 class Scenario:
     def __init__(self, xp_module: XpModule, file: str):
         with open(file, "r") as file:
@@ -55,23 +76,27 @@ class Scenario:
 class Step:
     def __init__(self, cfg, scenario: Scenario, xp_module: XpModule):
         self.cfg = cfg
+        self.name = cfg.get("name", "Unnamed Step")
         self.xp_module = xp_module
         self.xp_module.clear()
         self.actions = []
         self.duration = cfg["duration"] * 1000  # Convert to milliseconds
+        if not "channels" in self.cfg:
+            return
+
         for chan_cfg in self.cfg["channels"]:
             for name, cfg in chan_cfg.items():
                 chan_id = scenario.get_chan_id_for_name(name)
                 match cfg["type"]:
-                    case "fader":
-                        self.actions.append(Fader(xp_module, chan_id, cfg))
                     case "static":
                         self.actions.append(Static(xp_module, chan_id, cfg))
+                    case "flicker":
+                        self.actions.append(Flicker(xp_module, chan_id, cfg))
 
     def execute(self):
         start_time = get_millis()
         last_refresh = 0
-        print(f"Executing step for duration {self.duration} ms")
+        print(f"Executing step {self.name} for duration {self.duration} ms")
         while (get_millis() < start_time + self.duration):
             if (get_millis() - last_refresh) < args.refresh_rate:
                 continue
@@ -84,8 +109,12 @@ class Step:
 
 def run_scenario(xp_module: XpModule, args):
     scenario = Scenario(xp_module, args.scenario_file)
-    print("Executing scenario ", scenario.config["scenario"]["name"])
-    for step in scenario.config["scenario"]["steps"]:
+    print(f"Executing scenario {scenario.config['scenario']['name']} for {args.duration} minutes")
+    start_time = time.time()
+    while time.time() < start_time + (args.duration * 60):
+        step_count = len(scenario.config["scenario"]["steps"])
+        next_step = random.randrange(0, step_count)
+        step = scenario.config["scenario"]["steps"][next_step]
         Step(step, scenario, xp_module).execute()
 
 def list_adapters():
@@ -126,9 +155,10 @@ def connect_device(xp_dev, args):
     xp_module = XpModule(xp_dev, wserv, wchar) 
     try: 
         run_scenario(xp_module, args)
-    except Exception as e:
-        traceback.print_exc()
+    except KeyboardInterrupt:
         print("Exiting...")
+    except:
+        traceback.print_exc()
 
     xp_module.reset()
     xp_dev.disconnect()
@@ -144,7 +174,8 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--list-adapters', action='store_true', help='List available BLE adapters and exit')
     parser.add_argument('-L', '--list-devices', action='store_true', help='List available BLE devices and exit')
     parser.add_argument('-f', '--scenario-file', type=str, help='File path to scenario YAML file to execute')
-    parser.add_argument('-r', '--refresh-rate', type=int, help='Refresh rate in milliseconds', default=50)
+    parser.add_argument('-r', '--refresh-rate', type=int, help='Refresh rate in milliseconds', default=20)
+    parser.add_argument('-d', '--duration', type=int, help='Run duration in minutes', default=60)
 
     args = parser.parse_args()
 
