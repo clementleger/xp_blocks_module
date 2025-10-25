@@ -1,0 +1,83 @@
+map:
+  door_spray:
+    type: spray
+    name: Window spray
+    inverted: true
+    id: 0
+  witch_motor:
+    type: motor
+    name: Witch motor
+    inverted: true
+    id: 1
+  light_1:
+    type: light
+    name: Light 1
+    id: 2
+  light_2:
+    type: light
+    name: Light 2
+    id: 3
+  light_3:
+    type: light
+    name: Light 3
+    id: 4
+  light_4:
+    type: light
+    name: Light 4
+    id: 5
+
+presets:
+  - glow_fast: &glow_fast
+      type: fade
+  - candle_flicker: &candle_flicker
+      type: candle_flicker
+      flicker_duration: 5
+  - static: &static
+      type: static
+      power: 255
+  - flicker_pumpkin: &flicker_pumpkin
+      type: flicker
+      flicker_period: 100
+      # off_threshold: 20
+  - flicker: &flicker
+      type: flicker
+      flicker_period: 100
+  - lightning: &lightning
+      type: flicker
+      on_off: true
+      flicker_period: 20
+
+scenario:
+  name: Small tower
+  steps:
+    - duration: 10
+      name: Light All
+      channels:
+        - light_1:
+            <<: *flicker
+        - light_2:
+            <<: *flicker
+        - light_3:
+            <<: *flicker
+        - light_4:
+            <<: *flicker
+    - duration: 5
+      name: Light Some
+      channels:
+        - light_1:
+            <<: *flicker
+        - light_2:
+            <<: *flicker
+        - light_4:
+            <<: *lightning
+    - duration: 2
+      name: Spray
+      channels:
+        - light_3:
+            <<: *lightning
+        - light_1:
+            <<: *flicker
+        - door_spray:
+            <<: *static
+
+      

@@ -36,7 +36,7 @@ presets:
   - flicker: &flicker
       type: flicker
       flicker_period: 200
-  - blink: &blink
+  - lightning: &lightning
       type: flicker
       on_off: true
       flicker_period: 20
@@ -60,7 +60,7 @@ scenario:
       name: Lightning strike
       channels:
         - entrance_light:
-            <<: *blink
+            <<: *lightning
         - pumpkin_light:
             <<: *flicker_pumpkin 
     - duration: 2
@@ -69,7 +69,7 @@ scenario:
         - window_spray:
             <<: *static
         - entrance_light:
-            <<: *blink
+            <<: *lightning
         - pumpkin_light:
             <<: *flicker_pumpkin 
     - duration: 7
